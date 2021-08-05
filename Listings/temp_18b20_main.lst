@@ -1,0 +1,483 @@
+C51 COMPILER V9.54   TEMP_18B20_MAIN                                                       12/15/2020 22:56:25 PAGE 1   
+
+
+C51 COMPILER V9.54, COMPILATION OF MODULE TEMP_18B20_MAIN
+OBJECT MODULE PLACED IN .\Objects\temp_18b20_main.obj
+COMPILER INVOKED BY: E:\keil 5 mdk\C51\BIN\C51.EXE temp_18b20_main.c OPTIMIZE(8,SPEED) BROWSE DEBUG OBJECTEXTEND PRINT(.
+                    -\Listings\temp_18b20_main.lst) OBJECT(.\Objects\temp_18b20_main.obj)
+
+line level    source
+
+   1          /*ds18b20温度显示
+   2          **@CTBU^Shy^
+   3          **$version:v1.1
+   4          **#chinese_coding_standard:GB2312
+   5          */
+   6          #include "ds18b20.h"
+   7          #include "nixie_tube.h"
+   8          #include <reg52.h>
+   9          //***********************************************************************
+  10          #define precision_level     1                   //等级1 - 0.5分辨率
+  11          #define show_temperature    0
+  12          #define show_priod              1
+  13          #define show_upper_limit        2                               //12.7
+  14          #define min_sampling_priod 100
+  15          #define max_sampling_priod 60000                        //到60秒   
+  16          #define max_temperature    120
+  17          sbit key_priod = P2^0;
+  18          sbit key_inc   = P2^1;
+  19          sbit key_dec   = P2^2;
+  20          sbit key_ok    = P2^3;
+  21          //***********************************************************************
+  22          unsigned char run_state = show_temperature;
+  23          float temperature_alarm_upper_limit = 17.5;
+  24          unsigned char code seg_tab[] = 
+  25                                                  {0xc0,0xf9,0xa4,0xb0,0x99,0x92,0x82,0xf8,0x80,0x90,
+  26                                    // seg//'0'  '1'  '2'  '3'  '4'  '5'  '6'  '7'  '8'  '9'
+  27                                    //code// 0    1    2    3    4    5    6    7    8    9
+  28                                                   0x88,0x83,0xc6,0xa1,0xc1,0x89,0xff,0x9c,0x8c};
+  29                                    // seg//'a'  'b'  'c'  'd'  'U'  'H'  ' '  '*'  'p' 
+  30                                    //code// a    b    c    d    e    f    10  11   12
+  31                           
+  32          int temp = 0;
+  33          int count = 0;  
+  34          unsigned char blink_position = 4;
+  35          unsigned int sampling_priod = min_sampling_priod;       //采样周期ms 
+  36          bit key_pressed = 0;    
+  37          unsigned char tc = 0;                                    
+  38          //***********************************************************************       
+  39          void temp_display(int temperature);
+  40          void upper_limit_display(float upper);
+  41          void sampling_priod_display(unsigned int sampling_priod);
+  42          void timer0_init(void); //10ms  
+  43          //***********************************************************************
+  44          void main(void)
+  45          {
+  46   1              EA = 1;
+  47   1              ET0 =1;
+  48   1              ds18b20_init();                                                   //初始化DS18B20
+  49   1              ds18b20_precision_set(precision_level);   //0.5
+  50   1              temp = ds18b20_read_temperature();
+  51   1              timer0_init();
+  52   1              P2 = 0xff;
+  53   1              while(1)
+  54   1              {
+C51 COMPILER V9.54   TEMP_18B20_MAIN                                                       12/15/2020 22:56:25 PAGE 2   
+
+  55   2                      switch(run_state)
+  56   2                      {
+  57   3                              case show_temperature:
+  58   3                                      
+  59   3                                      if(count > sampling_priod/20)
+  60   3                                      {
+  61   4                                              temp = ds18b20_read_temperature();
+  62   4                                              count = 0;
+  63   4                                      }
+  64   3                                      
+  65   3                                      /*功能键检测*/
+  66   3                                      if(key_pressed==0&&key_priod==0)
+  67   3                                      {
+  68   4                                              key_pressed = 1;
+  69   4                                              tc = 10;
+  70   4                                      }
+  71   3                                      delay200us();
+  72   3                                      if(tc)
+  73   3                                      {
+  74   4                                              tc--;
+  75   4                                              if(!tc)
+  76   4                                              {
+  77   5                                                      if(key_priod==0)
+  78   5                                                      {
+  79   6                                                              run_state = show_priod;
+  80   6                                                              key_pressed = 0;
+  81   6                                                      }
+  82   5                                              else
+  83   5                                                      key_pressed = 0;        //判定抖动
+  84   5                                              }
+  85   4                                      }
+  86   3                                      
+  87   3                                      
+  88   3                                      break;
+  89   3                              case show_priod:
+  90   3                                      sampling_priod_display(sampling_priod);
+  91   3                                      /*功能键检测*/
+  92   3                                      if(key_pressed==0&&(key_priod==0||key_inc==0||key_dec==0||key_ok==0))
+  93   3                                      {
+  94   4                                              key_pressed = 1;
+  95   4                                              tc = 10;
+  96   4                                      }
+  97   3                                      delay200us();
+  98   3                                      if(tc)
+  99   3                                      {
+ 100   4                                              tc--;
+ 101   4                                              if(!tc)
+ 102   4                                              {
+ 103   5                                                      if(key_priod==0||key_inc==0||key_dec==0||key_ok==0)
+ 104   5                                                      {
+ 105   6                                                              if(key_priod==0)
+ 106   6                                                              {
+ 107   7                                                                      run_state = show_upper_limit;
+ 108   7                                                                      key_pressed = 0;
+ 109   7                                                              }
+ 110   6                                                              else if(key_inc==0)
+ 111   6                                                              {
+ 112   7                                                                      blink_position--;
+ 113   7                                                                      if(blink_position==0)
+ 114   7                                                                              blink_position=4;
+ 115   7                                                                      key_pressed=0;
+ 116   7                                                              }
+C51 COMPILER V9.54   TEMP_18B20_MAIN                                                       12/15/2020 22:56:25 PAGE 3   
+
+ 117   6                                                              else if(key_dec==0)
+ 118   6                                                              {
+ 119   7                                                                      
+ 120   7                                                                      switch(blink_position)
+ 121   7                                                                      {
+ 122   8                                                                              case 1:
+ 123   8                                                                                      sampling_priod+=10000;
+ 124   8                                                                                      if(sampling_priod>max_sampling_priod)
+ 125   8                                                                                              sampling_priod-=max_sampling_priod/10000*10000; 
+ 126   8                                                                              break;
+ 127   8                                                                              case 2:
+ 128   8                                                                                      sampling_priod+=1000;
+ 129   8                                                                                      if(sampling_priod>max_sampling_priod)
+ 130   8                                                                                              sampling_priod-=max_sampling_priod/1000%10*1000;
+ 131   8                                                                                      if(sampling_priod/1000%10==0)                   //消除进位
+ 132   8                                                                                              sampling_priod-=10000;
+ 133   8                                                                              break;
+ 134   8                                                                              case 3:
+ 135   8                                                                                      sampling_priod+=100;
+ 136   8                                                                                      if(sampling_priod>max_sampling_priod)
+ 137   8                                                                                              sampling_priod-=max_sampling_priod/100%10*100;
+ 138   8                                                                                      if(sampling_priod/100%10==0)
+ 139   8                                                                                              sampling_priod-=1000;   
+ 140   8                                                                              break;  
+ 141   8                                                                              case 4:
+ 142   8                                                                                      sampling_priod+=20;
+ 143   8                                                                                      if(sampling_priod>max_sampling_priod)
+ 144   8                                                                                              sampling_priod-=max_sampling_priod/10%10*10;
+ 145   8                                                                                      if(sampling_priod/10%10==0)
+ 146   8                                                                                              sampling_priod-=100;
+ 147   8                                                                              break;  
+ 148   8                                                                              default:
+ 149   8                                                                                      break;
+ 150   8                                                                      }
+ 151   7                                                                      key_pressed=0;
+ 152   7                                                              }
+ 153   6                                                              else if(key_ok==0)
+ 154   6                                                              {
+ 155   7                                                                      run_state=show_temperature;
+ 156   7                                                                      blink_position=4;
+ 157   7                                                                      key_pressed=0;
+ 158   7                                                              }
+ 159   6                                                              else
+ 160   6                                                              {
+ 161   7                                                                      key_pressed = 0;        //判定抖动
+ 162   7                                                              }
+ 163   6                                                      }
+ 164   5                                                      else
+ 165   5                                                              key_pressed = 0;        //判定抖动
+ 166   5                                              }
+ 167   4                                      }
+ 168   3                                      
+ 169   3                                      break;
+ 170   3                              case show_upper_limit:
+ 171   3                                      upper_limit_display(temperature_alarm_upper_limit);
+ 172   3                                      /*功能键检测*/
+ 173   3                                      if(key_pressed==0&&(key_priod==0||key_inc==0||key_dec==0||key_ok==0))
+ 174   3                                      {
+ 175   4                                              key_pressed = 1;
+ 176   4                                              tc = 10;
+ 177   4                                      }
+ 178   3                                      delay200us();
+C51 COMPILER V9.54   TEMP_18B20_MAIN                                                       12/15/2020 22:56:25 PAGE 4   
+
+ 179   3                                      if(tc)
+ 180   3                                      {
+ 181   4                                              tc--;
+ 182   4                                              if(!tc)
+ 183   4                                              {
+ 184   5                                                      if(key_priod==0||key_inc==0||key_dec==0||key_ok==0)
+ 185   5                                                      {
+ 186   6                                                              if(key_priod==0)
+ 187   6                                                              {
+ 188   7                                                                      run_state = show_priod;
+ 189   7                                                                      key_pressed = 0;
+ 190   7                                                              }
+ 191   6                                                              else if(key_inc==0)
+ 192   6                                                              {
+ 193   7                                                                      blink_position--;
+ 194   7                                                                      if(blink_position==0)
+ 195   7                                                                              blink_position=4;
+ 196   7                                                                      key_pressed=0;
+ 197   7                                                              }
+ 198   6                                                              else if(key_dec==0)
+ 199   6                                                              {
+ 200   7                                                                      
+ 201   7                                                                      switch(blink_position)
+ 202   7                                                                      {
+ 203   8                                                                              case 1:
+ 204   8                                                                                      temperature_alarm_upper_limit+=100;
+ 205   8                                                                                      if(temperature_alarm_upper_limit>max_temperature)
+ 206   8                                                                                              temperature_alarm_upper_limit-=max_temperature/100*100; 
+ 207   8                                                                              break;
+ 208   8                                                                              case 2:
+ 209   8                                                                                      temperature_alarm_upper_limit+=10;
+ 210   8                                                                                      if(temperature_alarm_upper_limit>max_temperature)
+ 211   8                                                                                              temperature_alarm_upper_limit-=((int)(max_temperature/10))%10*10;
+ 212   8                                                                                      if(((int)(temperature_alarm_upper_limit/10))%10==0)                     //消除进位
+ 213   8                                                                                              temperature_alarm_upper_limit-=100;
+ 214   8                                                                              break;
+ 215   8                                                                              case 3:
+ 216   8                                                                                      temperature_alarm_upper_limit+=1;
+ 217   8                                                                                      if(temperature_alarm_upper_limit>max_temperature)
+ 218   8                                                                                              temperature_alarm_upper_limit-=((int)(max_temperature))%10;
+ 219   8                                                                                      if(((int)(temperature_alarm_upper_limit))%10==0)                        
+ 220   8                                                                                              temperature_alarm_upper_limit-=10;
+ 221   8                                                                              break;
+ 222   8                                                                              case 4:
+ 223   8                                                                                      temperature_alarm_upper_limit+=0.5;
+ 224   8                                                                                      if(temperature_alarm_upper_limit>max_temperature)
+ 225   8                                                                                              temperature_alarm_upper_limit-=1;
+ 226   8                                                                                      if(temperature_alarm_upper_limit-(int)(temperature_alarm_upper_limit)==0)                       
+ 227   8                                                                                              temperature_alarm_upper_limit-=1;
+ 228   8                                                                              break;  
+ 229   8                                                                              default:
+ 230   8                                                                                      break;
+ 231   8                                                                      }
+ 232   7                                                                      key_pressed=0;
+ 233   7                                                              }
+ 234   6                                                              else if(key_ok==0)
+ 235   6                                                              {
+ 236   7                                                                      run_state=show_temperature;
+ 237   7                                                                      blink_position=4;
+ 238   7                                                                      key_pressed=0;
+ 239   7                                                              }
+ 240   6                                                              else
+C51 COMPILER V9.54   TEMP_18B20_MAIN                                                       12/15/2020 22:56:25 PAGE 5   
+
+ 241   6                                                              {
+ 242   7                                                                      key_pressed = 0;        //判定抖动
+ 243   7                                                              }
+ 244   6                                                      }
+ 245   5                                                      else
+ 246   5                                                              key_pressed = 0;        //判定抖动
+ 247   5                                              }
+ 248   4                                      }
+ 249   3                                      
+ 250   3                                      break;
+ 251   3                      }
+ 252   2                      
+ 253   2              }
+ 254   1              
+ 255   1      }
+ 256          //***********************************************************************
+ 257          void temp_display(int temperature)
+ 258          {
+ 259   1              unsigned char temp[] = {0x10,0,0,0,0x11,0x0c};
+ 260   1              float max_test = temperature / 10.0;
+ 261   1              int i = 0;
+ 262   1              for(i = 4;temperature;i--)//11.30
+ 263   1              {
+ 264   2                      temp[i-1] = temperature%10;
+ 265   2                      temperature/=10;
+ 266   2              }
+ 267   1              single_tube_display(0,seg_tab[temp[0]]);
+ 268   1              single_tube_display(1,seg_tab[temp[1]]);
+ 269   1              single_tube_display(2,seg_tab[temp[2]]&0x7f);   //与上小数点
+ 270   1              single_tube_display(3,seg_tab[temp[3]]);
+ 271   1              single_tube_display(4,seg_tab[temp[4]]);
+ 272   1              single_tube_display(5,seg_tab[temp[5]]);
+ 273   1              if(max_test>temperature_alarm_upper_limit)
+ 274   1                      single_tube_display(7,seg_tab[0x0f]);
+ 275   1      }
+ 276          //***********************************************************************
+ 277          void sampling_priod_display(unsigned int sampling_priod)
+ 278          {
+ 279   1              unsigned char priod[] = {0x12,0,0,0,0,0};
+ 280   1              unsigned char i = 5;
+ 281   1              static unsigned int blink_time = 0;
+ 282   1              static bit blink_flag = 1;
+ 283   1              if(blink_flag)
+ 284   1              {
+ 285   2                      if(++blink_time==30)
+ 286   2                              blink_flag = 0;
+ 287   2              }
+ 288   1              else
+ 289   1              {
+ 290   2                      if(--blink_time==0)
+ 291   2                              blink_flag = 1;
+ 292   2              }
+ 293   1              while(i)
+ 294   1              {
+ 295   2                      priod[i] = sampling_priod%10;
+ 296   2                      sampling_priod/=10;
+ 297   2                      i--;                                                            //11.26
+ 298   2              }
+ 299   1              /*闪烁调整 所以每位必须点亮*/
+ 300   1      //      if(priod[1] == 0)       priod[1] = 0x10;        //空
+ 301   1      //      if(priod[2] == 0)       priod[2] = 0x10;        //空
+ 302   1              single_tube_display(1,seg_tab[priod[0]]);
+C51 COMPILER V9.54   TEMP_18B20_MAIN                                                       12/15/2020 22:56:25 PAGE 6   
+
+ 303   1              switch(blink_position)
+ 304   1              {
+ 305   2                      case 1:
+ 306   2                              if(blink_flag)
+ 307   2                                      single_tube_display(2,seg_tab[priod[1]]);
+ 308   2                              else
+ 309   2                                      single_tube_display(2,seg_tab[0x10]);//空
+ 310   2                              single_tube_display(3,seg_tab[priod[2]]);
+ 311   2                              single_tube_display(4,seg_tab[priod[3]]);
+ 312   2                              single_tube_display(5,seg_tab[priod[4]]);
+ 313   2                              single_tube_display(6,seg_tab[priod[5]]);
+ 314   2                              break;
+ 315   2                      case 2:
+ 316   2                              if(blink_flag)
+ 317   2                                      single_tube_display(3,seg_tab[priod[2]]);
+ 318   2                              else
+ 319   2                                      single_tube_display(3,seg_tab[0x10]);//空
+ 320   2                              single_tube_display(2,seg_tab[priod[1]]);
+ 321   2                              single_tube_display(4,seg_tab[priod[3]]);
+ 322   2                              single_tube_display(5,seg_tab[priod[4]]);
+ 323   2                              single_tube_display(6,seg_tab[priod[5]]);
+ 324   2                              break;
+ 325   2                      case 3:
+ 326   2                              if(blink_flag)
+ 327   2                                      single_tube_display(4,seg_tab[priod[3]]);
+ 328   2                              else
+ 329   2                                      single_tube_display(4,seg_tab[0x10]);//空
+ 330   2                              single_tube_display(3,seg_tab[priod[2]]);
+ 331   2                              single_tube_display(2,seg_tab[priod[1]]);
+ 332   2                              single_tube_display(5,seg_tab[priod[4]]);
+ 333   2                              single_tube_display(6,seg_tab[priod[5]]);
+ 334   2                              break;
+ 335   2                      case 4:
+ 336   2                              if(blink_flag)
+ 337   2                                      single_tube_display(5,seg_tab[priod[4]]);
+ 338   2                              else
+ 339   2                                      single_tube_display(5,seg_tab[0x10]);//空
+ 340   2                              single_tube_display(3,seg_tab[priod[2]]);
+ 341   2                              single_tube_display(4,seg_tab[priod[3]]);
+ 342   2                              single_tube_display(2,seg_tab[priod[1]]);
+ 343   2                              single_tube_display(6,seg_tab[priod[5]]);
+ 344   2                              break;
+ 345   2                      case 5:
+ 346   2                              if(blink_flag)
+ 347   2                                      single_tube_display(6,seg_tab[priod[5]]);
+ 348   2                              else
+ 349   2                                      single_tube_display(6,seg_tab[0x10]);//空
+ 350   2                              single_tube_display(3,seg_tab[priod[2]]);
+ 351   2                              single_tube_display(4,seg_tab[priod[3]]);
+ 352   2                              single_tube_display(5,seg_tab[priod[4]]);
+ 353   2                              single_tube_display(2,seg_tab[priod[1]]);
+ 354   2                              break;
+ 355   2                              
+ 356   2              }
+ 357   1      
+ 358   1      }
+ 359          //***********************************************************************
+ 360          void upper_limit_display(float upper)
+ 361          {
+ 362   1              unsigned char temperature[] = {0x0e,0x12,0x00,0x00,0x00,0x00};
+ 363   1              unsigned char i = 5;
+ 364   1              int upper_diplay = (int)(upper * 10);
+C51 COMPILER V9.54   TEMP_18B20_MAIN                                                       12/15/2020 22:56:25 PAGE 7   
+
+ 365   1              static unsigned int blink_time = 0;
+ 366   1              static bit blink_flag = 1;
+ 367   1              if(blink_flag)
+ 368   1              {
+ 369   2                      if(++blink_time==30)
+ 370   2                              blink_flag = 0;
+ 371   2              }
+ 372   1              else
+ 373   1              {
+ 374   2                      if(--blink_time==0)
+ 375   2                              blink_flag = 1;
+ 376   2              }
+ 377   1              while(upper_diplay)
+ 378   1              {
+ 379   2                      temperature[i] = upper_diplay%10;
+ 380   2                      upper_diplay/=10;
+ 381   2                      i--;                                                            //12.7
+ 382   2              }
+ 383   1              single_tube_display(0,seg_tab[temperature[0]]);
+ 384   1              single_tube_display(1,seg_tab[temperature[1]]);
+ 385   1      
+ 386   1              
+ 387   1              switch(blink_position)
+ 388   1              {
+ 389   2                      case 1:
+ 390   2                              if(blink_flag)
+ 391   2                                      single_tube_display(2,seg_tab[temperature[2]]);
+ 392   2                              else
+ 393   2                                      single_tube_display(2,seg_tab[0x10]);//空
+ 394   2                              single_tube_display(3,seg_tab[temperature[3]]);
+ 395   2                              single_tube_display(4,seg_tab[temperature[4]]&0x7f);
+ 396   2                              single_tube_display(5,seg_tab[temperature[5]]);
+ 397   2                              break;
+ 398   2                      case 2:
+ 399   2                              if(blink_flag)
+ 400   2                                      single_tube_display(3,seg_tab[temperature[3]]);
+ 401   2                              else
+ 402   2                                      single_tube_display(3,seg_tab[0x10]);//空
+ 403   2                              single_tube_display(2,seg_tab[temperature[2]]);
+ 404   2                              single_tube_display(4,seg_tab[temperature[4]]&0x7f);
+ 405   2                              single_tube_display(5,seg_tab[temperature[5]]);
+ 406   2                              break;
+ 407   2                      case 3:
+ 408   2                              if(blink_flag)
+ 409   2                                      single_tube_display(4,seg_tab[temperature[4]]&0x7f);
+ 410   2                              else
+ 411   2                                      single_tube_display(4,seg_tab[0x10]&0x7f);//空
+ 412   2                              single_tube_display(3,seg_tab[temperature[3]]);
+ 413   2                              single_tube_display(2,seg_tab[temperature[2]]);
+ 414   2                              single_tube_display(5,seg_tab[temperature[5]]);
+ 415   2                              break;
+ 416   2                      case 4:
+ 417   2                              if(blink_flag)
+ 418   2                                      single_tube_display(5,seg_tab[temperature[5]]);
+ 419   2                              else
+ 420   2                                      single_tube_display(5,seg_tab[0x10]);//空
+ 421   2                              single_tube_display(3,seg_tab[temperature[3]]);
+ 422   2                              single_tube_display(4,seg_tab[temperature[4]]&0x7f);
+ 423   2                              single_tube_display(2,seg_tab[temperature[2]]);
+ 424   2                              break;
+ 425   2              }
+ 426   1      }
+C51 COMPILER V9.54   TEMP_18B20_MAIN                                                       12/15/2020 22:56:25 PAGE 8   
+
+ 427          //***********************************************************************
+ 428          void timer0_init(void)  //20ms  12mhz
+ 429          {
+ 430   1              TMOD &= 0xF0;           
+ 431   1              TMOD |= 0x01;           
+ 432   1              TL0 = 0xE0;     
+ 433   1              TH0 = 0xB1;
+ 434   1              TF0 = 0;                
+ 435   1              TR0 = 1;                
+ 436   1      }
+ 437          //***********************************************************************
+ 438          void timer0(void) interrupt 1
+ 439          {
+ 440   1              TL0 = 0xE0;     
+ 441   1              TH0 = 0xB1;
+ 442   1              if(run_state==show_temperature)
+ 443   1                      temp_display(temp);
+ 444   1              count++;
+ 445   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   2145    ----
+   CONSTANT SIZE    =     37    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =     17      31
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =      3    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)
