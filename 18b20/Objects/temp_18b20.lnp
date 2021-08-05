@@ -1,0 +1,6 @@
+".\Objects\STARTUP.obj",
+".\Objects\temp_18b20_main.obj",
+".\Objects\nixie_tube.obj",
+".\Objects\ds18b20.obj" 
+TO ".\Objects\temp_18b20" 
+PRINT(".\Listings\temp_18b20.m51") RAMSIZE(256) 

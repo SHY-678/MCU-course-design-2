@@ -1,0 +1,211 @@
+C51 COMPILER V9.54   TEMP_18B20_MAIN                                                       11/30/2020 13:04:00 PAGE 1   
+
+
+C51 COMPILER V9.54, COMPILATION OF MODULE TEMP_18B20_MAIN
+OBJECT MODULE PLACED IN .\Objects\temp_18b20_main.obj
+COMPILER INVOKED BY: E:\keil 5 mdk\C51\BIN\C51.EXE temp_18b20_main.c OPTIMIZE(8,SPEED) BROWSE DEBUG OBJECTEXTEND PRINT(.
+                    -\Listings\temp_18b20_main.lst) OBJECT(.\Objects\temp_18b20_main.obj)
+
+line level    source
+
+   1          /*ds18b20温度显示
+   2          **@CTBU^Shy^
+   3          **$version:v1.0
+   4          **#chinese_coding_standard:GB2312
+   5          */
+   6          #include "ds18b20.h"
+   7          #include "nixie_tube.h"
+   8          #include <reg52.h>
+   9          //***********************************************************************
+  10          #define precision_level     2                   //等级2 - 0.25精度
+  11          #define show_temperature    0
+  12          #define show_priod  1
+  13          #define min_sampling_priod 190
+  14          #define max_sampling_priod 65530
+  15          sbit key_priod = P2^0;
+  16          sbit key_inc   = P2^1;
+  17          sbit key_dec   = P2^2;
+  18          sbit key_ok    = P2^3;
+  19          //***********************************************************************
+  20          unsigned char run_state = show_temperature;
+  21          unsigned char code seg_tab[] = 
+  22                                                  {0xc0,0xf9,0xa4,0xb0,0x99,0x92,0x82,0xf8,0x80,0x90,
+  23                                    // seg//'0'  '1'  '2'  '3'  '4'  '5'  '6'  '7'  '8'  '9'
+  24                                    //code// 0    1    2    3    4    5    6    7    8    9
+  25                                                   0x88,0x83,0xc6,0xa1,0x86,0x8e,0xff,0x9c,0x8c};
+  26                                    // seg//'a'  'b'  'c'  'd'  'e'  'f'  ' '  '*'  'p' 
+  27                                    //code// a    b    c    d    e    f    10  11   12
+  28                           
+  29          int temp = 0;
+  30          int count = 0;  
+  31          unsigned int sampling_priod = min_sampling_priod;       //采样周期ms 
+  32          bit key_pressed = 0;    
+  33          unsigned char tc = 0;                                    
+  34          //***********************************************************************       
+  35          void temp_display(int temperature);
+  36          void sampling_priod_display(unsigned int sampling_priod);
+  37          void timer0_init(void); //10ms  
+  38          //***********************************************************************
+  39          void main(void)
+  40          {
+  41   1              EA = 1;
+  42   1              ET0 =1;
+  43   1              ds18b20_init();                                                   //初始化DS18B20
+  44   1              ds18b20_precision_set(precision_level);   //0.25精度
+  45   1              temp = ds18b20_read_temperature();
+  46   1              timer0_init();
+  47   1              P2 = 0xff;
+  48   1              while(1)
+  49   1              {
+  50   2                      switch(run_state)
+  51   2                      {
+  52   3                              case show_temperature:
+  53   3                                      if(count > sampling_priod/20)
+  54   3                                      {
+C51 COMPILER V9.54   TEMP_18B20_MAIN                                                       11/30/2020 13:04:00 PAGE 2   
+
+  55   4                                              temp = ds18b20_read_temperature();
+  56   4                                              count = 0;
+  57   4                                      }
+  58   3                                      break;
+  59   3                              case show_priod:
+  60   3                                      sampling_priod_display(sampling_priod);
+  61   3                                      break;
+  62   3                      }
+  63   2                      if(key_pressed==0&&(key_priod==0||key_inc==0||key_dec==0||key_ok==0))
+  64   2                      {
+  65   3                              key_pressed = 1;
+  66   3                              tc = 10;
+  67   3                      }
+  68   2                      delay200us();
+  69   2                      if(tc)
+  70   2                      {
+  71   3                              tc--;
+  72   3                              if(!tc)
+  73   3                              {
+  74   4                                      if((key_priod==0||key_inc==0||key_dec==0||key_ok==0))
+  75   4                                      {
+  76   5                                              if(key_priod==0)
+  77   5                                              {
+  78   6                                                      run_state = show_priod;
+  79   6                                                      key_pressed = 0;
+  80   6                                              }
+  81   5                                              else if(key_inc==0)
+  82   5                                              {
+  83   6                                                      if(run_state == show_priod)
+  84   6                                                      {
+  85   7                                                              sampling_priod++;
+  86   7                                                              if(sampling_priod>max_sampling_priod)
+  87   7                                                                      sampling_priod = max_sampling_priod;
+  88   7                                                      }
+  89   6                                                      key_pressed = 0;
+  90   6                                              }
+  91   5                                              else if(key_dec==0)
+  92   5                                              {
+  93   6                                                      if(run_state == show_priod)
+  94   6                                                      {
+  95   7                                                              sampling_priod--;
+  96   7                                                              if(sampling_priod<min_sampling_priod)
+  97   7                                                                      sampling_priod = min_sampling_priod;
+  98   7                                                      }
+  99   6                                                      key_pressed = 0;
+ 100   6                                              }
+ 101   5                                              else
+ 102   5                                              {
+ 103   6                                                      if(key_ok==0)
+ 104   6                                                              run_state = show_temperature;
+ 105   6                                                      key_pressed = 0;
+ 106   6                                              }
+ 107   5                                      }
+ 108   4                                      else
+ 109   4                                              key_pressed = 0;        //判定抖动
+ 110   4                              }
+ 111   3                      }
+ 112   2              }
+ 113   1              
+ 114   1      }
+ 115          //***********************************************************************
+ 116          void temp_display(int temperature)
+C51 COMPILER V9.54   TEMP_18B20_MAIN                                                       11/30/2020 13:04:00 PAGE 3   
+
+ 117          {
+ 118   1              unsigned char temp[] = {0,0,0,0,0x11,0x0c};
+ 119   1              int i = 0;
+ 120   1      //      temp[0] = temperature/1000;
+ 121   1      //      temp[1] = (temperature/100)%10;
+ 122   1      //      temp[2] = (temperature/10)%10;
+ 123   1      //      temp[3] = temperature%10;
+ 124   1              for(i = 4;temperature;i--)
+ 125   1              {
+ 126   2                      temp[i-1] = temperature%10;
+ 127   2                      temperature/=10;
+ 128   2              }
+ 129   1              single_tube_display(1,seg_tab[temp[0]]);
+ 130   1              single_tube_display(2,seg_tab[temp[1]]&0x7f);   //与上小数点
+ 131   1              single_tube_display(3,seg_tab[temp[2]]);
+ 132   1              single_tube_display(4,seg_tab[temp[3]]);
+ 133   1              single_tube_display(5,seg_tab[temp[4]]);
+ 134   1              single_tube_display(6,seg_tab[temp[5]]);
+ 135   1      }
+ 136          //***********************************************************************
+ 137          void sampling_priod_display(unsigned int sampling_priod)
+ 138          {
+ 139   1              unsigned char priod[] = {0,0,0,0,0,0};
+ 140   1              unsigned char i = 5;
+ 141   1              priod[0] = 0x12;                                                //p
+ 142   1              while(i)
+ 143   1              {
+ 144   2                      priod[i] = sampling_priod%10;
+ 145   2                      sampling_priod/=10;
+ 146   2                      i--;                                                            //11.26
+ 147   2      //              priod[1] = sampling_priod/10000;
+ 148   2      //              priod[2] = (sampling_priod/1000)%10;
+ 149   2      //              priod[3] = (sampling_priod/100)%10;
+ 150   2      //              priod[4] = (sampling_priod/10)%10;
+ 151   2      //              priod[5] = sampling_priod%10;
+ 152   2              }
+ 153   1              
+ 154   1              if(priod[1] == 0)       priod[1] = 0x10;        //空
+ 155   1              if(priod[2] == 0)       priod[2] = 0x10;        //空
+ 156   1              
+ 157   1              single_tube_display(1,seg_tab[priod[0]]);
+ 158   1              single_tube_display(2,seg_tab[priod[1]]);
+ 159   1              single_tube_display(3,seg_tab[priod[2]]);
+ 160   1              single_tube_display(4,seg_tab[priod[3]]);
+ 161   1              single_tube_display(5,seg_tab[priod[4]]);
+ 162   1              single_tube_display(6,seg_tab[priod[5]]);
+ 163   1      }
+ 164          //***********************************************************************
+ 165          void timer0_init(void)  //20ms  12mhz
+ 166          {
+ 167   1              TMOD = 0xF1;    
+ 168   1              TL0 = 0xE0;             
+ 169   1              TH0 = 0xB1;             
+ 170   1              TF0 = 0;                
+ 171   1              TR0 = 1;                
+ 172   1      }
+ 173          //***********************************************************************
+ 174          void timer0(void) interrupt 1
+ 175          {
+ 176   1              TL0 = 0xE0;             
+ 177   1              TH0 = 0xB1;
+ 178   1              if(run_state == show_temperature)
+C51 COMPILER V9.54   TEMP_18B20_MAIN                                                       11/30/2020 13:04:00 PAGE 4   
+
+ 179   1                      temp_display(temp);
+ 180   1              count++;
+ 181   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    614    ----
+   CONSTANT SIZE    =     31    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =      8      16
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =      1    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)
